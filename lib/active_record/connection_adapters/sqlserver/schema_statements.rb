@@ -422,6 +422,7 @@ module ActiveRecord
               else
                 type = case ci[:type]
                        when /smallint|int|bigint/ then ci[:_type]
+                       when /bit/ then 'smallint'
                        else ci[:type]
                        end
                 value = default.match(/\A\((.*)\)\Z/m)[1]

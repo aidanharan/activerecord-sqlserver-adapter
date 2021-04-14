@@ -11,13 +11,13 @@ module Arel
 
       private
 
-      # SQLServer ToSql/Visitor (Overides)
+      # SQLServer ToSql/Visitor (Overrides)
 
-      def visit_Arel_Nodes_BindParam o, collector
+      def visit_Arel_Nodes_BindParam(o, collector)
         collector.add_bind(o.value) { |i| "@#{i - 1}" }
       end
 
-      def visit_Arel_Nodes_Bin o, collector
+      def visit_Arel_Nodes_Bin(o, collector)
         visit o.expr, collector
         collector << " #{ActiveRecord::ConnectionAdapters::SQLServerAdapter.cs_equality_operator} "
       end
@@ -28,26 +28,26 @@ module Arel
         visit o.right, collector
       end
 
-      def visit_Arel_Nodes_UpdateStatement(o, a)
+      def visit_Arel_Nodes_UpdateStatement(o, collector)
         if o.orders.any? && o.limit.nil?
           o.limit = Nodes::Limit.new(9_223_372_036_854_775_807)
         end
         super
       end
 
-      def visit_Arel_Nodes_Lock o, collector
+      def visit_Arel_Nodes_Lock(o, collector)
         o.expr = Arel.sql("WITH(UPDLOCK)") if o.expr.to_s =~ /FOR UPDATE/
         collector << " "
         visit o.expr, collector
       end
 
-      def visit_Arel_Nodes_Offset o, collector
+      def visit_Arel_Nodes_Offset(o, collector)
         collector << OFFSET
         visit o.expr, collector
         collector << ROWS
       end
 
-      def visit_Arel_Nodes_Limit o, collector
+      def visit_Arel_Nodes_Limit(o, collector)
         if node_value(o) == 0
           collector << FETCH0
           collector << ROWS_ONLY
@@ -63,7 +63,47 @@ module Arel
         super
       end
 
-      def visit_Arel_Nodes_SelectStatement o, collector
+      def visit_Arel_Nodes_HomogeneousIn(o, collector)
+
+        # puts "MSSQL: visit_Arel_Nodes_HomogeneousIn"
+
+        collector.preparable = false
+
+        collector << quote_table_name(o.table_name) << "." << quote_column_name(o.column_name)
+
+        if o.type == :in
+          collector << " IN ("
+        else
+          collector << " NOT IN ("
+        end
+
+        values = o.casted_values
+
+        # byebug
+
+        if values.empty?
+          collector << @connection.quote(nil)
+        else
+
+          attrs = values.map do |value|
+            # collector.add_bind(Arel::Nodes::BindParam.new(v), proc { |i| "@#{i - 1}" })
+            # collector.add_bind(Arel::Nodes::BindParam.new(v), &bind_block)
+            # collector.add_bind(v) { |i| "@#{i - 1}" }
+
+            ActiveRecord::Relation::QueryAttribute.new(o.column_name, value, o.attribute.relation.type_for_attribute(o.column_name))
+            # collector.add_bind(Arel::Nodes::BindParam.new(attr))  { |i| "@#{i - 1}" }
+
+          end
+
+
+          collector.add_binds(attrs) { |i| "@#{i - 1}" }
+        end
+
+        collector << ")"
+        collector
+      end
+
+      def visit_Arel_Nodes_SelectStatement(o, collector)
         @select_statement = o
         distinct_One_As_One_Is_So_Not_Fetch o
         if o.with
@@ -90,7 +130,7 @@ module Arel
         collector << "OPTION (#{hints})"
       end
 
-      def visit_Arel_Table o, collector
+      def visit_Arel_Table(o, collector)
         # Apparently, o.engine.connection can actually be a different adapter
         # than sqlserver. Can be removed if fixed in ActiveRecord. See:
         # github.com/rails-sqlserver/activerecord-sqlserver-adapter/issues/450
@@ -112,7 +152,7 @@ module Arel
         end
       end
 
-      def visit_Arel_Nodes_JoinSource o, collector
+      def visit_Arel_Nodes_JoinSource(o, collector)
         if o.left
           collector = visit o.left, collector
           collector = visit_Arel_Nodes_SelectStatement_SQLServer_Lock collector
@@ -124,7 +164,7 @@ module Arel
         collector
       end
 
-      def visit_Arel_Nodes_InnerJoin o, collector
+      def visit_Arel_Nodes_InnerJoin(o, collector)
         if o.left.is_a?(Arel::Nodes::As) && o.left.left.is_a?(Arel::Nodes::Lateral)
           collector << "CROSS "
           visit o.left, collector
@@ -141,7 +181,7 @@ module Arel
         end
       end
 
-      def visit_Arel_Nodes_OuterJoin o, collector
+      def visit_Arel_Nodes_OuterJoin(o, collector)
         if o.left.is_a?(Arel::Nodes::As) && o.left.left.is_a?(Arel::Nodes::Lateral)
           collector << "OUTER "
           visit o.left, collector
@@ -170,7 +210,7 @@ module Arel
 
       # SQLServer ToSql/Visitor (Additions)
 
-      def visit_Arel_Nodes_SelectStatement_SQLServer_Lock collector, options = {}
+      def visit_Arel_Nodes_SelectStatement_SQLServer_Lock(collector, options = {})
         if select_statement_lock?
           collector = visit @select_statement.lock, collector
           collector << " " if options[:space]
@@ -178,7 +218,7 @@ module Arel
         collector
       end
 
-      def visit_Orders_And_Let_Fetch_Happen o, collector
+      def visit_Orders_And_Let_Fetch_Happen(o, collector)
         make_Fetch_Possible_And_Deterministic o
         unless o.orders.empty?
           collector << " ORDER BY "
@@ -191,14 +231,14 @@ module Arel
         collector
       end
 
-      def visit_Make_Fetch_Happen o, collector
+      def visit_Make_Fetch_Happen(o, collector)
         o.offset = Nodes::Offset.new(0) if o.limit && !o.offset
         collector = visit o.offset, collector if o.offset
         collector = visit o.limit, collector if o.limit
         collector
       end
 
-      def visit_Arel_Nodes_Lateral o, collector
+      def visit_Arel_Nodes_Lateral(o, collector)
         collector << "APPLY"
         collector << " "
         if o.expr.is_a?(Arel::Nodes::SelectStatement)
@@ -226,7 +266,7 @@ module Arel
         @select_statement && @select_statement.lock
       end
 
-      def make_Fetch_Possible_And_Deterministic o
+      def make_Fetch_Possible_And_Deterministic(o)
         return if o.limit.nil? && o.offset.nil?
 
         t = table_From_Statement o
@@ -239,7 +279,7 @@ module Arel
         end
       end
 
-      def distinct_One_As_One_Is_So_Not_Fetch o
+      def distinct_One_As_One_Is_So_Not_Fetch(o)
         core = o.cores.first
         distinct = Nodes::Distinct === core.set_quantifier
         oneasone = core.projections.all? { |x| x == ActiveRecord::FinderMethods::ONE_AS_ONE }
@@ -250,7 +290,7 @@ module Arel
         end
       end
 
-      def table_From_Statement o
+      def table_From_Statement(o)
         core = o.cores.first
         if Arel::Table === core.from
           core.from
@@ -261,7 +301,7 @@ module Arel
         end
       end
 
-      def primary_Key_From_Table t
+      def primary_Key_From_Table(t)
         return unless t
 
         column_name = @connection.schema_cache.primary_keys(t.name) ||
@@ -269,7 +309,7 @@ module Arel
         column_name ? t[column_name] : nil
       end
 
-      def remote_server_table_name o
+      def remote_server_table_name(o)
         ActiveRecord::ConnectionAdapters::SQLServer::Utils.extract_identifiers(
           "#{o.class.engine.connection.database_prefix}#{o.name}"
         ).quoted

@@ -13,8 +13,13 @@ module Arel
 
       # SQLServer ToSql/Visitor (Overrides)
 
+      BIND_BLOCK = proc { |i| "@#{i - 1}" }
+      private_constant :BIND_BLOCK
+
+      def bind_block; BIND_BLOCK; end
+
       def visit_Arel_Nodes_BindParam(o, collector)
-        collector.add_bind(o.value) { |i| "@#{i - 1}" }
+        collector.add_bind(o.value, &bind_block)
       end
 
       def visit_Arel_Nodes_Bin(o, collector)
@@ -64,9 +69,6 @@ module Arel
       end
 
       def visit_Arel_Nodes_HomogeneousIn(o, collector)
-
-        # puts "MSSQL: visit_Arel_Nodes_HomogeneousIn"
-
         collector.preparable = false
 
         collector << quote_table_name(o.table_name) << "." << quote_column_name(o.column_name)
@@ -79,24 +81,16 @@ module Arel
 
         values = o.casted_values
 
-        # byebug
-
         if values.empty?
           collector << @connection.quote(nil)
         else
+          # Monkey-patch start. Add query attribute bindings rather than just values.
+          column_name = o.column_name
+          column_type = o.attribute.relation.type_for_attribute(o.column_name)
+          attrs = values.map { |value| ActiveRecord::Relation::QueryAttribute.new(column_name, value, column_type) }
 
-          attrs = values.map do |value|
-            # collector.add_bind(Arel::Nodes::BindParam.new(v), proc { |i| "@#{i - 1}" })
-            # collector.add_bind(Arel::Nodes::BindParam.new(v), &bind_block)
-            # collector.add_bind(v) { |i| "@#{i - 1}" }
-
-            ActiveRecord::Relation::QueryAttribute.new(o.column_name, value, o.attribute.relation.type_for_attribute(o.column_name))
-            # collector.add_bind(Arel::Nodes::BindParam.new(attr))  { |i| "@#{i - 1}" }
-
-          end
-
-
-          collector.add_binds(attrs) { |i| "@#{i - 1}" }
+          collector.add_binds(attrs, &bind_block)
+          # Monkey-patch end.
         end
 
         collector << ")"

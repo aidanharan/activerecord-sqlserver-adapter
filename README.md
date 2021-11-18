@@ -189,4 +189,4 @@ You can see an up-to-date list of contributors here: http://github.com/rails-sql
 
 Copyright © 2008-2020. It is free software, and may be redistributed under the terms specified in the [MIT-LICENSE](MIT-LICENSE) file.
 
-CHANGE5
+CHANGE6

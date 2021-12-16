@@ -83,7 +83,8 @@ module ActiveRecord
             timeout:       config_timeout(config),
             encoding:      config_encoding(config),
             azure:         config[:azure],
-            contained:     config[:contained]
+            contained:     config[:contained],
+            application_intent: config[:replica] == true ? :read_only : nil
           ).tap do |client|
             if config[:azure]
               client.execute("SET ANSI_NULLS ON").do
